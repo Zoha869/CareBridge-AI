@@ -1,0 +1,21 @@
+/* Tailwind's base, component, and utility layers. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global defaults: body font, background, and smooth theme
+   transitions when the user toggles dark/light mode. */
+@layer base {
+  html {
+    font-family: 'Inter', sans-serif;
+  }
+
+  body {
+    @apply bg-surface text-ink dark:bg-surface-dark dark:text-ink-dark;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Fraunces', serif;
+  }
+}

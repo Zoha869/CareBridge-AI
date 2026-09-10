@@ -1,0 +1,24 @@
+# Core web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Database ORM and PostgreSQL driver
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.10
+alembic==1.13.2
+
+# Supabase client (used for Auth: Google OAuth + Email/Password)
+supabase==2.7.4
+
+# JWT verification for Supabase-issued access tokens
+pyjwt[crypto]==2.9.0
+
+# Settings management from environment variables
+pydantic-settings==2.5.2
+pydantic[email]==2.9.2
+
+# CORS / environment loading
+python-dotenv==1.0.1
+# LLM orchestration (patient assistant workflow) and Groq client (OpenAI-compatible API)
+langgraph
+openai
