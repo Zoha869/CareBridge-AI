@@ -1,3 +1,4 @@
+# app/services/llm_service.py
 """
 Wrapper around the Groq chat completion API (OpenAI-compatible).
 Every LLM call in the app goes through this module.
@@ -32,4 +33,9 @@ def structured_completion(system_prompt: str, user_content: str) -> dict:
         response_format={"type": "json_object"},
         temperature=0,
     )
-    return json.loads(response.choices[0].message.content)
+    try:
+        return json.loads(response.choices[0].message.content)
+    except (json.JSONDecodeError, TypeError):
+        # Never let a bad LLM response crash the whole conversation - callers
+        # already use .get() with defaults, so an empty dict degrades gracefully.
+        return {}

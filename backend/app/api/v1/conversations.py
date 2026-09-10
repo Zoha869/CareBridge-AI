@@ -1,3 +1,4 @@
+# app/api/v1/conversations.py
 """
 Conversation endpoints: /api/v1/conversations/*
 
@@ -59,14 +60,20 @@ def send_message(
 
     save_message(db, conversation_id, SenderRole.PATIENT, payload.content)
 
-    result = patient_graph.invoke(
-        {
-            "db": db,
-            "patient_id": patient.id,
-            "conversation_id": conversation_id,
-            "message": payload.content,
-        }
-    )
+    try:
+        result = patient_graph.invoke(
+            {
+                "db": db,
+                "patient_id": patient.id,
+                "conversation_id": conversation_id,
+                "message": payload.content,
+            }
+        )
+        response_text = result["response"]
+    except Exception:
+        # Fallback instead of a raw 500 - the patient always gets a reply,
+        # this was previously causing the "assistant didn't respond" issue.
+        response_text = "Sorry, I couldn't process that just now. Could you try rephrasing, or try again in a moment?"
 
-    ai_message = save_message(db, conversation_id, SenderRole.AI, result["response"])
+    ai_message = save_message(db, conversation_id, SenderRole.AI, response_text)
     return ai_message

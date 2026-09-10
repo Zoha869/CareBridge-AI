@@ -1,3 +1,4 @@
+// src/pages/DoctorDashboard.jsx
 // Doctor Dashboard - Phase 5 UI. Every number and row here comes
 // from real endpoints (appointments/today, doctors/patients,
 // doctors/me) - no placeholder stats or fake nav items for features
@@ -11,7 +12,7 @@ import PatientInsightRow from '../components/doctor/PatientInsightRow.jsx'
 import ClinicalCopilot from '../components/doctor/ClinicalCopilot.jsx'
 import PatientDossierPanel from '../components/doctor/PatientDossierPanel.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
-import { getMyProfile, getTodaysAppointments, getMyPatients } from '../lib/api.js'
+import { getMyProfile, getTodaysAppointments, getMyPatients, updateAppointmentStatus } from '../lib/api.js'
 
 function greeting() {
   const hour = new Date().getHours()
@@ -52,6 +53,17 @@ export default function DoctorDashboard() {
   const needAttentionCount = patients.filter((p) => p.top_severity === 'urgent' || p.top_severity === 'moderate').length
   const summariesReadyCount = patients.filter((p) => p.has_summary).length
   const selectedPatientName = patients.find((p) => p.patient_id === selectedPatientId)?.full_name
+
+  // Doctor marks an appointment as completed ("visited") - updates the
+  // backend, then reflects the new status straight in local state.
+  async function handleMarkVisited(appointment) {
+    try {
+      const updated = await updateAppointmentStatus(session.access_token, appointment.id, 'completed')
+      setAppointments((prev) => prev.map((a) => (a.id === updated.id ? { ...a, status: updated.status } : a)))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   function handleLogout() {
     logout()
@@ -158,7 +170,12 @@ export default function DoctorDashboard() {
               ) : (
                 <div className="mt-2">
                   {appointments.map((a) => (
-                    <AppointmentRow key={a.id} appointment={a} onView={() => setSelectedPatientId(a.patient_id)} />
+                    <AppointmentRow
+                      key={a.id}
+                      appointment={a}
+                      onView={() => setSelectedPatientId(a.patient_id)}
+                      onMarkVisited={handleMarkVisited}
+                    />
                   ))}
                 </div>
               )}
@@ -181,7 +198,11 @@ export default function DoctorDashboard() {
           </div>
 
           <div className="w-96 shrink-0">
-            <ClinicalCopilot doctorFirstName={profile?.full_name?.split(' ')[0]} selectedPatientName={selectedPatientName} />
+            <ClinicalCopilot
+              doctorFirstName={profile?.full_name?.split(' ')[0]}
+              selectedPatientId={selectedPatientId}
+              selectedPatientName={selectedPatientName}
+            />
           </div>
         </div>
       </div>

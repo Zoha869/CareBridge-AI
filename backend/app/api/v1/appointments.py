@@ -1,9 +1,10 @@
+# app/api/v1/appointments.py
 """
 Appointment endpoints: /api/v1/appointments/*
 
 Patients can create and view their own appointments. Doctors can view
-appointments assigned to them (e.g. "today's appointments" for the
-Doctor Dashboard, built in Phase 5).
+appointments assigned to them and mark their own appointments as
+completed ("visited") or cancelled.
 """
 
 from datetime import date
@@ -17,10 +18,13 @@ from app.core.security import CurrentUser
 from app.models.patient import Patient
 from app.models.doctor import Doctor
 from app.models.user import User
-from app.models.appointment import Appointment
-from app.schemas.appointment import AppointmentCreate, AppointmentOut
+from app.models.appointment import Appointment, AppointmentStatus
+from app.models.visit import Visit
+from app.schemas.appointment import AppointmentCreate, AppointmentOut, AppointmentStatusUpdate
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
+
+ALLOWED_DOCTOR_STATUS_UPDATES = {"completed", "cancelled"}
 
 
 @router.post("", response_model=AppointmentOut)
@@ -79,7 +83,7 @@ def get_todays_appointments_as_doctor(
     """
     Returns today's appointments for the logged-in doctor, with the
     patient's name attached - the core data source for the Doctor
-    Dashboard built in Phase 5.
+    Dashboard.
     """
     doctor = db.query(Doctor).filter(Doctor.user_id == user.supabase_id).first()
     if doctor is None:
@@ -94,6 +98,41 @@ def get_todays_appointments_as_doctor(
         .all()
     )
     return _attach_name(rows, "patient_name")
+
+
+@router.patch("/{appointment_id}/status", response_model=AppointmentOut)
+def update_appointment_status(
+    appointment_id: str,
+    payload: AppointmentStatusUpdate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_doctor),
+):
+    """Doctor marks their own appointment as completed (visited) or cancelled."""
+    doctor = db.query(Doctor).filter(Doctor.user_id == user.supabase_id).first()
+    if doctor is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor profile not found.")
+
+    if payload.status not in ALLOWED_DOCTOR_STATUS_UPDATES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status must be 'completed' or 'cancelled'.")
+
+    appointment = (
+        db.query(Appointment)
+        .filter(Appointment.id == appointment_id, Appointment.doctor_id == doctor.id)
+        .first()
+    )
+    if appointment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found.")
+
+    appointment.status = AppointmentStatus(payload.status)
+
+    if appointment.status == AppointmentStatus.COMPLETED:
+        # Completing an appointment also creates a Visit record, so it
+        # shows under the patient's "Recent Visits" and feeds the AI context.
+        db.add(Visit(patient_id=appointment.patient_id, doctor_id=doctor.id, visit_date=appointment.appointment_date))
+
+    db.commit()
+    db.refresh(appointment)
+    return appointment
 
 
 def _attach_name(rows, field: str) -> list[Appointment]:

@@ -1,9 +1,6 @@
+# app/api/v1/doctors.py
 """
 Doctor endpoints: /api/v1/doctors/*
-
-Includes the doctor's own profile management, a listing endpoint
-patients use when booking, and the Doctor Dashboard endpoints
-(patient list, patient dossier, Doctor AI chat) from Phase 5.
 """
 
 from typing import List
@@ -62,10 +59,7 @@ def update_my_profile(
 
 @router.get("", response_model=List[DoctorOut])
 def list_doctors(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    """
-    Lists all doctors - used by patients when booking an appointment.
-    Any authenticated user (patient or doctor) may view this list.
-    """
+    """Lists all doctors - used by patients when booking an appointment."""
     rows = db.query(Doctor, User.full_name).join(User, Doctor.user_id == User.id).all()
 
     doctors = []
@@ -91,10 +85,7 @@ def get_patient_detail(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_doctor),
 ):
-    """
-    Full patient dossier for the Doctor Dashboard's patient view.
-    Only accessible if the doctor has an appointment with this patient.
-    """
+    """Full patient dossier - only accessible if the doctor has an appointment with this patient."""
     doctor = db.query(Doctor).filter(Doctor.user_id == user.supabase_id).first()
     if doctor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor profile not found.")
@@ -114,10 +105,17 @@ def doctor_chat(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_doctor),
 ):
-    """Doctor AI Assistant - ask about today's schedule or a specific patient."""
+    """Doctor AI Assistant - ask about schedule/patients, or (with a selected
+    patient) prescribe a medicine, give an instruction, or mark a visit."""
     doctor = db.query(Doctor).filter(Doctor.user_id == user.supabase_id).first()
     if doctor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor profile not found.")
 
-    response = answer_doctor_query(db, doctor.id, payload.message, payload.patient_name_hint)
+    if payload.patient_id and not doctor_has_access(db, doctor.id, payload.patient_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this patient's record.",
+        )
+
+    response = answer_doctor_query(db, doctor.id, payload.message, payload.patient_id, payload.patient_name_hint)
     return DoctorChatOut(response=response)

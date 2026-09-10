@@ -1,3 +1,4 @@
+# app/schemas/appointment.py
 """
 Pydantic schemas for appointment creation and responses.
 """
@@ -15,6 +16,12 @@ class AppointmentCreate(BaseModel):
     appointment_date: date
     appointment_time: time
     reason: str
+
+
+class AppointmentStatusUpdate(BaseModel):
+    """Payload for a doctor marking their appointment completed (visited) or cancelled."""
+
+    status: str
 
 
 class AppointmentOut(BaseModel):
