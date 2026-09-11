@@ -4,14 +4,18 @@ Doctor AI Assistant.
 
 Grounded Q&A about the doctor's schedule/patients (existing behaviour),
 plus natural-language actions once a patient is selected in the UI:
-prescribing a medicine, giving a free-text instruction, or marking the
-patient's appointment as visited/completed. Each action writes to the
-same tables the Doctor/Patient dashboards already read from, so results
-appear on both sides immediately.
+prescribing a medicine, giving a free-text instruction, and/or marking the
+patient's appointment as visited/completed - all three can be present in a
+single message and are extracted and saved independently, each to its own
+table (Medications / Doctor Instructions / Appointment status), so results
+appear correctly split on both dashboards immediately.
 
-Action detection is keyword-first (fast, reliable) with an LLM
-classifier only as a fallback for instruction-vs-query - this avoids
-depending on the LLM correctly returning JSON for every message.
+Patient-selection gating (deciding whether we even have a target patient
+yet) still uses fast keyword regexes. The action extraction itself is a
+single structured LLM call per message, since a regex "first match wins"
+approach silently dropped whichever action didn't match first (e.g. a
+medicine named without a dosage keyword used to get swallowed into a plain
+instruction instead of becoming its own Medication record).
 """
 
 import re
@@ -62,21 +66,29 @@ INSTRUCTION_HINT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-ACTION_PROMPT = """A doctor is chatting about ONE selected patient. Their latest
-message is NOT about medicine dosage and NOT about marking a visit done.
-Decide if it's a free-text instruction for the patient, or just a question.
+ACTION_PROMPT = """A doctor is chatting about ONE selected patient. Extract ALL of
+the following that apply in their message - a single message can contain more
+than one at once (e.g. a medicine AND a separate instruction AND marking the
+visit done, together).
 
-Return JSON only: {"action": "give_instruction" | "query"}
-- "give_instruction": a non-medicine instruction for the patient (e.g. "avoid heavy exercise for 2 weeks", "rest for a week")
-- "query": anything else (asking about the patient, schedule, etc.)
-"""
+Return JSON only:
+{
+  "medicine": {"name": "<medicine name>", "dosage": "<dosage>" or null, "instructions": "<how to take it>" or null} or null,
+  "instruction": "<non-medicine guidance as one clear sentence>" or null,
+  "mark_visited": true | false
+}
 
-MEDICINE_EXTRACT_PROMPT = """Extract the medicine the doctor is prescribing.
-Return JSON only: {"name": "<medicine name>", "dosage": "<dosage>" or null, "instructions": "<how to take it>" or null}
-"""
-
-INSTRUCTION_EXTRACT_PROMPT = """Extract the doctor's instruction for the patient as one
-clear sentence. Return JSON only: {"instruction_text": "<instruction>"}
+Rules:
+- "medicine": set whenever the doctor names an actual drug/medicine, even
+  WITHOUT a dosage (e.g. "give her Aspirin" still counts - dosage/instructions
+  can be null). Never fold a medicine name into "instruction" instead.
+- "instruction": any OTHER patient-facing guidance that is NOT about a named
+  medicine (e.g. "take full rest", "avoid heavy exercise for 2 weeks"). Do not
+  repeat medicine details here.
+- "mark_visited": true only if the doctor is marking this patient's
+  appointment/visit as done/seen/completed.
+- If the message is just a question and none of the above apply, return
+  {"medicine": null, "instruction": null, "mark_visited": false}.
 """
 
 
@@ -153,52 +165,61 @@ def _result(
     }
 
 
-def _prescribe_medicine(db: Session, doctor_id, patient_id, message: str) -> str:
-    extracted = structured_completion(MEDICINE_EXTRACT_PROMPT, message)
-    name = extracted.get("name")
-    if not name:
-        return "I couldn't catch the medicine name - could you repeat it?"
+def _apply_actions(db: Session, doctor_id, patient_id, message: str) -> str | None:
+    """Extracts and applies every action present in ONE doctor message - a
+    medicine, a separate instruction, and/or marking the visit done can all
+    be present together (e.g. "give her Aspirin, full rest, mark visited").
+    Each detected piece is saved to its own table so it shows up in the
+    right place (Medications vs Doctor Instructions) on the patient side.
+    Returns None if nothing actionable was found, so the caller falls
+    through to normal grounded Q&A instead.
+    """
+    extracted = structured_completion(ACTION_PROMPT, message)
+    medicine = extracted.get("medicine")
+    instruction = extracted.get("instruction")
+    mark_visited = bool(extracted.get("mark_visited"))
 
-    medication = Medication(
-        patient_id=patient_id,
-        doctor_id=doctor_id,
-        name=name,
-        dosage=extracted.get("dosage"),
-        instructions=extracted.get("instructions"),
-        prescribed_date=date.today(),
-    )
-    db.add(medication)
-    db.commit()
-    db.refresh(medication)
-    regenerate_summary(db, patient_id)
+    if not medicine and not instruction and not mark_visited:
+        return None
 
-    lines = [
-        "🧾 Prescription saved",
-        f"Patient: {_patient_full_name(db, patient_id)}",
-        f"Medicine: {medication.name}",
-    ]
-    if medication.dosage:
-        lines.append(f"Dosage: {medication.dosage}")
-    if medication.instructions:
-        lines.append(f"Instructions: {medication.instructions}")
-    lines.append(f"Date: {medication.prescribed_date}")
-    lines.append("Visible on the patient's dashboard and to their AI assistant now.")
+    lines = []
+    changed = False
+
+    if medicine and medicine.get("name"):
+        med = Medication(
+            patient_id=patient_id,
+            doctor_id=doctor_id,
+            name=medicine["name"],
+            dosage=medicine.get("dosage"),
+            instructions=medicine.get("instructions"),
+            prescribed_date=date.today(),
+        )
+        db.add(med)
+        db.commit()
+        db.refresh(med)
+        changed = True
+        med_line = f"🧾 Medicine saved: {med.name}"
+        if med.dosage:
+            med_line += f" ({med.dosage})"
+        lines.append(med_line)
+        if not med.dosage and not med.instructions:
+            lines.append("   No dosage or timing given yet - let me know if you'd like to add it.")
+
+    if instruction:
+        db.add(DoctorInstruction(patient_id=patient_id, doctor_id=doctor_id, instruction_text=instruction))
+        db.commit()
+        changed = True
+        lines.append(f"📋 Instruction saved: \"{instruction}\"")
+
+    if mark_visited:
+        lines.append(_mark_visited(db, doctor_id, patient_id))
+        changed = True
+
+    if changed:
+        regenerate_summary(db, patient_id)
+
+    lines.append(f"Visible on {_patient_full_name(db, patient_id)}'s dashboard and to their AI assistant now.")
     return "\n".join(lines)
-
-
-def _give_instruction(db: Session, doctor_id, patient_id, message: str) -> str:
-    extracted = structured_completion(INSTRUCTION_EXTRACT_PROMPT, message)
-    text = extracted.get("instruction_text") or message
-
-    instruction = DoctorInstruction(patient_id=patient_id, doctor_id=doctor_id, instruction_text=text)
-    db.add(instruction)
-    db.commit()
-    regenerate_summary(db, patient_id)
-
-    return (
-        f"📋 Instruction saved for {_patient_full_name(db, patient_id)}:\n\"{text}\"\n"
-        "Visible on their dashboard and to their AI assistant now."
-    )
 
 
 def _mark_visited(db: Session, doctor_id, patient_id) -> str:
@@ -256,16 +277,9 @@ def answer_doctor_query(
         )
 
     if resolved_patient_id:
-        if DOSAGE_HINT_PATTERN.search(message):
-            return _result(_prescribe_medicine(db, doctor_id, resolved_patient_id, message), resolved)
-        if VISIT_HINT_PATTERN.search(message):
-            return _result(_mark_visited(db, doctor_id, resolved_patient_id), resolved)
-        if INSTRUCTION_HINT_PATTERN.search(message):
-            return _result(_give_instruction(db, doctor_id, resolved_patient_id, message), resolved)
-
-        action = structured_completion(ACTION_PROMPT, message).get("action", "query")
-        if action == "give_instruction":
-            return _result(_give_instruction(db, doctor_id, resolved_patient_id, message), resolved)
+        actions_response = _apply_actions(db, doctor_id, resolved_patient_id, message)
+        if actions_response is not None:
+            return _result(actions_response, resolved)
 
     patient_detail = ""
     if resolved:

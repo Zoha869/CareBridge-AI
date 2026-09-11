@@ -93,7 +93,11 @@ def get_todays_appointments_as_doctor(
         db.query(Appointment, User.full_name)
         .join(Patient, Appointment.patient_id == Patient.id)
         .join(User, Patient.user_id == User.id)
-        .filter(Appointment.doctor_id == doctor.id, Appointment.appointment_date == date.today())
+        .filter(
+            Appointment.doctor_id == doctor.id,
+            Appointment.appointment_date == date.today(),
+            Appointment.status != AppointmentStatus.CANCELLED,
+        )
         .order_by(Appointment.appointment_time.asc())
         .all()
     )

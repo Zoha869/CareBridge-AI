@@ -24,18 +24,29 @@ def get_available_doctors(db: Session) -> list[dict]:
     ]
 
 
-def is_slot_available(db: Session, doctor_id, appointment_date: date, appointment_time: time) -> bool:
-    existing = (
-        db.query(Appointment)
-        .filter(
-            Appointment.doctor_id == doctor_id,
-            Appointment.appointment_date == appointment_date,
-            Appointment.appointment_time == appointment_time,
-            Appointment.status != AppointmentStatus.CANCELLED,
-        )
-        .first()
+def reschedule_appointment(db: Session, appointment_id, appointment_date: date, appointment_time: time) -> Appointment | None:
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if appointment is None:
+        return None
+    appointment.appointment_date = appointment_date
+    appointment.appointment_time = appointment_time
+    db.commit()
+    db.refresh(appointment)
+    return appointment
+
+
+def is_slot_available(
+    db: Session, doctor_id, appointment_date: date, appointment_time: time, exclude_appointment_id=None
+) -> bool:
+    query = db.query(Appointment).filter(
+        Appointment.doctor_id == doctor_id,
+        Appointment.appointment_date == appointment_date,
+        Appointment.appointment_time == appointment_time,
+        Appointment.status != AppointmentStatus.CANCELLED,
     )
-    return existing is None
+    if exclude_appointment_id:
+        query = query.filter(Appointment.id != exclude_appointment_id)
+    return query.first() is None
 
 
 def create_appointment(
