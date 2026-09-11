@@ -107,6 +107,52 @@ def _patient_full_name(db: Session, patient_id) -> str:
     return row[0] if row else "the patient"
 
 
+def _find_patient_by_name(patients: list[dict], text: str | None) -> dict | None:
+    """Matches a patient's full name inside free text (case-insensitive).
+
+    Only returns a match when exactly one patient's name appears in the
+    text - an ambiguous or empty match means "let the picker handle it"
+    rather than guessing wrong.
+    """
+    if not text:
+        return None
+    text_lower = text.lower()
+    matches = [p for p in patients if p["full_name"].lower() in text_lower]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _resolve_patient(db: Session, doctor_id, patients: list[dict], patient_id, patient_name_hint: str | None, message: str) -> dict | None:
+    """Figures out which patient (if any) this message is about.
+
+    Priority: an explicit patient_id from the UI selection wins outright;
+    otherwise try to match a name mentioned in the hint or the doctor's
+    own message text against this doctor's patient list.
+    """
+    if patient_id:
+        match = next((p for p in patients if str(p["patient_id"]) == str(patient_id)), None)
+        return match or {"patient_id": patient_id, "full_name": patient_name_hint or "the patient"}
+
+    return _find_patient_by_name(patients, patient_name_hint) or _find_patient_by_name(patients, message)
+
+
+def _result(
+    response: str,
+    resolved: dict | None = None,
+    needs_selection: bool = False,
+    patient_options: list[dict] | None = None,
+    pending_message: str | None = None,
+) -> dict:
+    """Standard shape returned to the API layer / DoctorChatOut."""
+    return {
+        "response": response,
+        "needs_patient_selection": needs_selection,
+        "patient_options": patient_options or [],
+        "pending_message": pending_message,
+        "resolved_patient_id": resolved["patient_id"] if resolved else None,
+        "resolved_patient_name": resolved["full_name"] if resolved else None,
+    }
+
+
 def _prescribe_medicine(db: Session, doctor_id, patient_id, message: str) -> str:
     extracted = structured_completion(MEDICINE_EXTRACT_PROMPT, message)
     name = extracted.get("name")
@@ -178,35 +224,58 @@ def _mark_visited(db: Session, doctor_id, patient_id) -> str:
 
 def answer_doctor_query(
     db: Session, doctor_id, message: str, patient_id=None, patient_name_hint: str | None = None
-) -> str:
+) -> dict:
     """
     patient_id: the patient currently selected in the doctor's UI - when
     set, the message may be a write action (prescribe/instruct/mark
     visited) instead of a plain question.
+
+    If no patient_id is given, this now also tries to resolve one from
+    the doctor's own wording (e.g. "give Zoha-008 Panadol 500mg..." in a
+    single message). If the message is clearly a patient-directed action
+    (dosage / instruction / mark-visited) and still no patient can be
+    resolved, it returns a picker instead of silently falling back to
+    generic chat and asking the doctor to repeat themselves.
     """
-    if patient_id:
+    patients = list_doctor_patients(db, doctor_id)
+    resolved = _resolve_patient(db, doctor_id, patients, patient_id, patient_name_hint, message)
+    resolved_patient_id = resolved["patient_id"] if resolved else None
+
+    is_action_intent = bool(
+        DOSAGE_HINT_PATTERN.search(message)
+        or VISIT_HINT_PATTERN.search(message)
+        or INSTRUCTION_HINT_PATTERN.search(message)
+    )
+
+    if resolved_patient_id is None and is_action_intent:
+        return _result(
+            "Which patient is this for? Pick one and I'll apply it right away.",
+            needs_selection=True,
+            patient_options=[{"patient_id": p["patient_id"], "full_name": p["full_name"]} for p in patients],
+            pending_message=message,
+        )
+
+    if resolved_patient_id:
         if DOSAGE_HINT_PATTERN.search(message):
-            return _prescribe_medicine(db, doctor_id, patient_id, message)
+            return _result(_prescribe_medicine(db, doctor_id, resolved_patient_id, message), resolved)
         if VISIT_HINT_PATTERN.search(message):
-            return _mark_visited(db, doctor_id, patient_id)
+            return _result(_mark_visited(db, doctor_id, resolved_patient_id), resolved)
         if INSTRUCTION_HINT_PATTERN.search(message):
-            return _give_instruction(db, doctor_id, patient_id, message)
+            return _result(_give_instruction(db, doctor_id, resolved_patient_id, message), resolved)
 
         action = structured_completion(ACTION_PROMPT, message).get("action", "query")
         if action == "give_instruction":
-            return _give_instruction(db, doctor_id, patient_id, message)
+            return _result(_give_instruction(db, doctor_id, resolved_patient_id, message), resolved)
 
     patient_detail = ""
-    if patient_name_hint:
-        patients = list_doctor_patients(db, doctor_id)
-        match = next((p for p in patients if patient_name_hint.lower() in p["full_name"].lower()), None)
-        if match:
-            dossier = get_patient_dossier(db, match["patient_id"])
-            patient_detail = f"\nDetail for {dossier['full_name']}:\nSummary: {dossier['summary'] or 'No summary yet.'}"
+    if resolved:
+        dossier = get_patient_dossier(db, resolved["patient_id"])
+        patient_detail = f"\nDetail for {dossier['full_name']}:\nSummary: {dossier['summary'] or 'No summary yet.'}"
 
     system_prompt = SYSTEM_PROMPT.format(
         todays_appointments=_format_todays_appointments(db, doctor_id),
         patient_list=_format_patient_list(db, doctor_id),
         patient_detail=patient_detail,
     )
-    return chat_completion(system_prompt, [{"role": "user", "content": message}])
+    text = chat_completion(system_prompt, [{"role": "user", "content": message}])
+    return _result(text, resolved)

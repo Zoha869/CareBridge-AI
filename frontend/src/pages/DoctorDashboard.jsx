@@ -202,6 +202,7 @@ export default function DoctorDashboard() {
               doctorFirstName={profile?.full_name?.split(' ')[0]}
               selectedPatientId={selectedPatientId}
               selectedPatientName={selectedPatientName}
+              onPatientResolved={(patientId) => setSelectedPatientId(patientId)}
             />
           </div>
         </div>

@@ -117,5 +117,5 @@ def doctor_chat(
             detail="You do not have access to this patient's record.",
         )
 
-    response = answer_doctor_query(db, doctor.id, payload.message, payload.patient_id, payload.patient_name_hint)
-    return DoctorChatOut(response=response)
+    result = answer_doctor_query(db, doctor.id, payload.message, payload.patient_id, payload.patient_name_hint)
+    return DoctorChatOut(**result)
