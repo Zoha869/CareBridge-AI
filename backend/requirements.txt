@@ -22,3 +22,6 @@ python-dotenv==1.0.1
 # LLM orchestration (patient assistant workflow) and Groq client (OpenAI-compatible API)
 langgraph
 openai
+# RAG: Qdrant Cloud client (vector storage) + Jina embeddings over HTTP
+qdrant-client 
+requests

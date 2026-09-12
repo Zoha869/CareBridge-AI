@@ -71,6 +71,8 @@ def send_message(
         )
         response_text = result["response"]
     except Exception:
+        import traceback
+        traceback.print_exc()
         # Fallback instead of a raw 500 - the patient always gets a reply,
         # this was previously causing the "assistant didn't respond" issue.
         response_text = "Sorry, I couldn't process that just now. Could you try rephrasing, or try again in a moment?"

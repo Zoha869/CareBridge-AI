@@ -5,7 +5,7 @@ Pydantic schemas for conversation and message endpoints.
 import uuid
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class MessageIn(BaseModel):
@@ -24,5 +24,4 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

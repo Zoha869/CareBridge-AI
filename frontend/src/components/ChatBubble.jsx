@@ -1,5 +1,6 @@
 // A single message in the conversation — patient messages align right
 // in the primary color, AI replies align left on a soft panel.
+import MessageContent from './MessageContent.jsx'
 export default function ChatBubble({ role, content }) {
   const isPatient = role === 'patient'
 
@@ -12,7 +13,7 @@ export default function ChatBubble({ role, content }) {
             : 'rounded-bl-sm bg-panel text-ink dark:bg-panel-dark dark:text-ink-dark'
         }`}
       >
-        {content}
+        <MessageContent text={content} />
       </div>
     </div>
   )

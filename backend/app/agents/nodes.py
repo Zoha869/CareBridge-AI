@@ -20,6 +20,8 @@ from app.services.appointment_service import (
 from app.services.patient_context_service import build_context_text
 from app.services.concern_service import extract_and_save_concern
 from app.services.summary_service import regenerate_summary
+from app.services.rag_service import search_medical_knowledge
+from app.services.rag_safety_prompt import RAG_SAFETY_RULES
 
 GENERAL_PROMPT = """You are the CareBridge hospital patient assistant. Answer clearly
 and briefly. Only claim to help with what this system actually supports:
@@ -32,6 +34,11 @@ and briefly. Only claim to help with what this system actually supports:
 Never claim to handle billing, insurance, lab/test results, prescription refills,
 or anything not listed above - this system doesn't support those yet. If asked,
 say so plainly and suggest contacting the clinic directly."""
+
+# RAG-grounded version of GENERAL_PROMPT - same capability list, plus the
+# retrieved hospital knowledge and the shared safety rules appended, so the
+# model answers from the knowledge base instead of its own training data.
+GENERAL_RAG_PROMPT = GENERAL_PROMPT + "\n\n{safety_rules}\n\nRetrieved hospital information:\n{context}"
 
 HISTORY_PROMPT = """You are a hospital patient assistant. Answer the patient's
 question using ONLY the patient record below - never invent visits, medications,
@@ -131,7 +138,16 @@ def safety_check_node(state: PatientState) -> PatientState:
 
 def general_response_node(state: PatientState) -> PatientState:
     messages = state["history"] + [{"role": "user", "content": state["message"]}]
-    state["response"] = chat_completion(GENERAL_PROMPT, messages)
+
+    # RAG: ground the answer in the hospital-approved knowledge base
+    # (medical_knowledge category only - no patient/doctor filter, since
+    # this content has no owner) instead of letting the LLM answer from
+    # its own training data.
+    chunks = search_medical_knowledge(state["message"])
+    context = "\n\n".join(c["text"] for c in chunks) if chunks else "No matching hospital information found."
+    system_prompt = GENERAL_RAG_PROMPT.format(safety_rules=RAG_SAFETY_RULES, context=context)
+
+    state["response"] = chat_completion(system_prompt, messages)
     return state
 
 

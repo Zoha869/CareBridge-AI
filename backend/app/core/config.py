@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     GROQ_API_KEY: str
 
+    # RAG stack: Qdrant Cloud free cluster (persistent, unlike in-memory)
+    # for vector storage, Jina for embeddings (Groq has no embeddings API).
+    QDRANT_URL: str
+    QDRANT_API_KEY: str
+    JINA_API_KEY: str
+
     # Pydantic-settings configuration: read values from a .env file
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
