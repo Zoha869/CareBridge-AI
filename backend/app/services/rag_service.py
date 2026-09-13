@@ -55,7 +55,7 @@ def search(
     patient_id=None,
     doctor_id=None,
     visibility_in: list[str] | None = None,
-    top_k: int = 2,
+    top_k: int = 4,
 ) -> list[dict]:
     """Generic permission-aware search - filters are AND'd together.
     Used directly for now only by search_medical_knowledge(); the filter
@@ -87,5 +87,13 @@ def search(
 
 def search_medical_knowledge(query: str, top_k: int = 2) -> list[dict]:
     """Hospital-approved general knowledge (Tab 17-18: education, medication
-    info) - no patient/doctor filter, this category has no owner."""
+    info) - no patient/doctor filter, this category has no owner.
+    top_k=2 chosen via the retrieval-eval sweep (see EVAL.md)."""
     return search(query, category="medical_knowledge", top_k=top_k)
+
+
+def search_patient_documents(patient_id, query: str, top_k: int = 2) -> list[dict]:
+    """A specific patient's own uploaded documents (Tab 13) - filtered by
+    patient_id so a patient's chat can never surface another patient's
+    document, even though they share the same Qdrant collection."""
+    return search(query, category="patient_document", patient_id=patient_id, top_k=top_k)

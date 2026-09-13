@@ -20,7 +20,7 @@ from app.services.appointment_service import (
 from app.services.patient_context_service import build_context_text
 from app.services.concern_service import extract_and_save_concern
 from app.services.summary_service import regenerate_summary
-from app.services.rag_service import search_medical_knowledge
+from app.services.rag_service import search_medical_knowledge, search_patient_documents
 from app.services.rag_safety_prompt import RAG_SAFETY_RULES
 
 GENERAL_PROMPT = """You are the CareBridge hospital patient assistant. Answer clearly
@@ -41,12 +41,16 @@ say so plainly and suggest contacting the clinic directly."""
 GENERAL_RAG_PROMPT = GENERAL_PROMPT + "\n\n{safety_rules}\n\nRetrieved hospital information:\n{context}"
 
 HISTORY_PROMPT = """You are a hospital patient assistant. Answer the patient's
-question using ONLY the patient record below - never invent visits, medications,
-appointments, or instructions that aren't listed. If the record doesn't have what
-they're asking about, say so plainly and suggest they contact the clinic.
+question using ONLY the patient record and documents below - never invent
+visits, medications, appointments, instructions, or document contents that
+aren't listed. If neither has what they're asking about, say so plainly and
+suggest they contact the clinic.
 
 Patient record:
 {context}
+
+Relevant uploaded documents:
+{document_context}
 """
 
 FOLLOWUP_MARKER = "Before I confirm —"
@@ -139,11 +143,15 @@ def safety_check_node(state: PatientState) -> PatientState:
 def general_response_node(state: PatientState) -> PatientState:
     messages = state["history"] + [{"role": "user", "content": state["message"]}]
 
-    # RAG: ground the answer in the hospital-approved knowledge base
-    # (medical_knowledge category only - no patient/doctor filter, since
-    # this content has no owner) instead of letting the LLM answer from
-    # its own training data.
-    chunks = search_medical_knowledge(state["message"])
+    # RAG: ground the answer in (a) the hospital-approved general
+    # knowledge base and (b) this specific patient's own uploaded
+    # documents (Phase 7) - merged and re-sorted by score so whichever
+    # source is more relevant to this question wins, instead of always
+    # giving the KB a fixed number of slots.
+    kb_chunks = search_medical_knowledge(state["message"])
+    doc_chunks = search_patient_documents(state["patient_id"], state["message"])
+    chunks = sorted(kb_chunks + doc_chunks, key=lambda c: c["score"], reverse=True)[:3]
+
     context = "\n\n".join(c["text"] for c in chunks) if chunks else "No matching hospital information found."
     system_prompt = GENERAL_RAG_PROMPT.format(safety_rules=RAG_SAFETY_RULES, context=context)
 
@@ -153,7 +161,15 @@ def general_response_node(state: PatientState) -> PatientState:
 
 def patient_history_node(state: PatientState) -> PatientState:
     context_text = build_context_text(state["db"], state["patient_id"])
-    system_prompt = HISTORY_PROMPT.format(context=context_text)
+
+    # Phase 7: the patient's own uploaded documents (lab reports,
+    # prescriptions, etc.) live in Qdrant, not the structured DB tables
+    # build_context_text() reads - without this, questions like "what
+    # was my hemoglobin level" never see the uploaded lab report at all.
+    doc_chunks = search_patient_documents(state["patient_id"], state["message"])
+    document_context = "\n\n".join(c["text"] for c in doc_chunks) if doc_chunks else "None found for this question."
+
+    system_prompt = HISTORY_PROMPT.format(context=context_text, document_context=document_context)
     messages = state["history"] + [{"role": "user", "content": state["message"]}]
     state["response"] = chat_completion(system_prompt, messages)
     return state

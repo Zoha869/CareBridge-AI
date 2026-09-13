@@ -25,3 +25,6 @@ openai
 # RAG: Qdrant Cloud client (vector storage) + Jina embeddings over HTTP
 qdrant-client 
 requests
+# Document upload (Phase 7): PDF text extraction + multipart form parsing
+pypdf 
+python-multipart

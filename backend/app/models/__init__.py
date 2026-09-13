@@ -14,8 +14,9 @@ from app.models.concern import PatientConcern
 from app.models.medication import Medication
 from app.models.instruction import DoctorInstruction
 from app.models.patient_summary import PatientSummary
+from app.models.document import Document
 
-_all_ = [
+all = [
     "User",
     "Patient",
     "Doctor",
@@ -27,4 +28,5 @@ _all_ = [
     "Medication",
     "DoctorInstruction",
     "PatientSummary",
+    "Document",
 ]
