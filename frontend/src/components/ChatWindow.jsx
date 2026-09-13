@@ -1,6 +1,6 @@
 // The Patient AI Assistant chat interface.
 //
-// Two things beyond plain chat live here:
+// Three things beyond plain chat live here:
 // 1. On mount, it loads the existing conversation from the backend
 //    (GET /conversations/history) so a page refresh doesn't lose it.
 // 2. A patient can explicitly trigger a guided booking flow (via the
@@ -8,11 +8,15 @@
 //    then a review step, and nothing is booked until they confirm.
 //    Free-text booking through the AI still works too; this is an
 //    additional, more guided path for when someone specifically asks.
+// 3. A patient can attach a document (paperclip button) right from the
+//    chat instead of a separate upload form - it uploads immediately
+//    and the assistant confirms it in the conversation, matching the
+//    "continuous assistant" feel rather than a static form elsewhere.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import ChatBubble from './ChatBubble.jsx'
 import InlineBookingForm from './InlineBookingForm.jsx'
 import BookingConfirmCard from './BookingConfirmCard.jsx'
-import { sendMessage, getConversationHistory, bookAppointment } from '../lib/api.js'
+import { sendMessage, getConversationHistory, bookAppointment, uploadDocument } from '../lib/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const GREETING = { role: 'ai', type: 'text', content: "Hi, I'm your CareBridge assistant. How can I help today?" }
@@ -24,8 +28,10 @@ const ChatWindow = forwardRef(function ChatWindow(_props, ref) {
   const [conversationId, setConversationId] = useState(null)
   const [isSending, setIsSending] = useState(false)
   const [isBooking, setIsBooking] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState('')
   const bottomRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     getConversationHistory(session.access_token)
@@ -107,6 +113,39 @@ const ChatWindow = forwardRef(function ChatWindow(_props, ref) {
     ])
   }
 
+  function openFilePicker() {
+    fileInputRef.current?.click()
+  }
+
+  async function handleFileSelected(event) {
+    const file = event.target.files?.[0]
+    event.target.value = '' // lets the same file be picked again later
+    if (!file) return
+
+    if (file.type !== 'application/pdf') {
+      setMessages((prev) => [...prev, { role: 'ai', type: 'text', content: 'I can only accept PDF files right now — could you try that format?' }])
+      return
+    }
+
+    setMessages((prev) => [...prev, { role: 'patient', type: 'text', content: `📎 ${file.name}` }])
+    setIsUploading(true)
+    try {
+      await uploadDocument(session.access_token, { file, documentType: 'other' })
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          type: 'text',
+          content: `Got it — I've added "${file.name}" to your record. You can rename its category anytime under Documents, and feel free to ask me about it.`,
+        },
+      ])
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'ai', type: 'text', content: `That upload didn't go through: ${err.message}` }])
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   useImperativeHandle(ref, () => ({
     sendPrompt: (text) => deliver(text),
     openBookingForm,
@@ -136,12 +175,30 @@ const ChatWindow = forwardRef(function ChatWindow(_props, ref) {
           return <ChatBubble key={i} role={m.role} content={m.content} />
         })}
         {isSending && <ChatBubble role="ai" content="Typing…" />}
+        {isUploading && <ChatBubble role="ai" content="Uploading and reading your document…" />}
         <div ref={bottomRef} />
       </div>
 
       {error && <p className="px-4 pb-2 text-sm text-danger">{error}</p>}
 
       <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-ink/10 p-3 dark:border-ink-dark/10">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          onChange={handleFileSelected}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={openFilePicker}
+          disabled={isUploading}
+          title="Attach a document (PDF)"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-ink/15 text-lg
+                     text-ink transition hover:border-accent hover:text-accent disabled:opacity-60 dark:border-ink-dark/15 dark:text-ink-dark"
+        >
+          ⬆️
+        </button>
         <button
           type="button"
           onClick={openBookingForm}

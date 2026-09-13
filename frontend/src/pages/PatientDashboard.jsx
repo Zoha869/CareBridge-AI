@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import ThemeToggle from '../components/ThemeToggle.jsx'
 import ChatWindow from '../components/ChatWindow.jsx'
 import AppointmentListItem from '../components/patient/AppointmentListItem.jsx'
+import DocumentsSection from '../components/patient/DocumentsSection.jsx'
 import StatCard from '../components/doctor/StatCard.jsx'
 import SeverityBadge from '../components/doctor/SeverityBadge.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -23,6 +24,7 @@ const NAV_SECTIONS = [
   { id: 'appointments', label: 'My Appointments' },
   { id: 'medications', label: 'Medications' },
   { id: 'instructions', label: 'Doctor Instructions' },
+  { id: 'documents', label: 'Documents' },
 ]
 
 const QUICK_TOPICS = [
@@ -255,6 +257,8 @@ export default function PatientDashboard() {
               )}
             </section>
           </div>
+
+          <DocumentsSection />
 
           {concerns.length > 0 && (
             <section className="rounded-2xl border border-ink/8 bg-panel p-5 dark:border-ink-dark/10 dark:bg-panel-dark">

@@ -146,3 +146,61 @@ export function bookAppointment(token, { doctorId, date, time, reason }) {
 export function getConversationHistory(token) {
   return authedRequest('/conversations/history', token)
 }
+/** Uploads a document (PDF) to the patient's own record - also feeds the RAG index. */
+export async function uploadDocument(token, { file, documentType }) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('document_type', documentType)
+
+  const response = await fetch(`${API_BASE_URL}/patients/me/documents`, {
+    method: 'POST',
+    // No Content-Type header - the browser sets the multipart boundary itself.
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Upload failed. Please try again.')
+  }
+  return data
+}
+
+/** Lists the logged-in patient's own uploaded documents. */
+export function listMyDocuments(token) {
+  return authedRequest('/patients/me/documents', token)
+}
+
+/** Doctor uploads a document (PDF) on behalf of one of their patients - shared with the patient. */
+export async function uploadDocumentForPatient(token, patientId, { file, documentType }) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('document_type', documentType)
+
+  const response = await fetch(`${API_BASE_URL}/doctors/patients/${patientId}/documents`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.detail || 'Upload failed. Please try again.')
+  }
+  return data
+}
+
+/** Doctor's view of every document on a given patient's record (their own uploads + shared ones). */
+export function getPatientDocuments(token, patientId) {
+  return authedRequest(`/doctors/patients/${patientId}/documents`, token)
+}
+
+/** Gets a short-lived signed URL to view/download one of the patient's own documents. */
+export function getMyDocumentDownloadUrl(token, documentId) {
+  return authedRequest(`/patients/me/documents/${documentId}/download`, token)
+}
+
+/** Doctor: gets a short-lived signed URL to view/download one of a patient's documents. */
+export function getPatientDocumentDownloadUrl(token, patientId, documentId) {
+  return authedRequest(`/doctors/patients/${patientId}/documents/${documentId}/download`, token)
+}

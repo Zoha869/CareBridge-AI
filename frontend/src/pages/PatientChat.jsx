@@ -6,12 +6,14 @@ import { useNavigate } from 'react-router-dom'
 import ThemeToggle from '../components/ThemeToggle.jsx'
 import ChatWindow from '../components/ChatWindow.jsx'
 import AppointmentsPanel from '../components/AppointmentsPanel.jsx'
+import DocumentsPanel from '../components/DocumentsPanel.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function PatientChat() {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
   const [showAppointments, setShowAppointments] = useState(false)
+  const [showDocuments, setShowDocuments] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -30,6 +32,13 @@ export default function PatientChat() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowDocuments(true)}
+            className="rounded-lg border border-ink/15 px-3 py-1.5 text-xs font-medium
+                       text-ink transition hover:border-ink/30 dark:border-ink-dark/15 dark:text-ink-dark"
+          >
+            My Documents
+          </button>
           <button
             onClick={() => setShowAppointments(true)}
             className="rounded-lg border border-ink/15 px-3 py-1.5 text-xs font-medium
@@ -53,6 +62,7 @@ export default function PatientChat() {
       </div>
 
       {showAppointments && <AppointmentsPanel onClose={() => setShowAppointments(false)} />}
+      {showDocuments && <DocumentsPanel onClose={() => setShowDocuments(false)} />}
     </div>
   )
 }

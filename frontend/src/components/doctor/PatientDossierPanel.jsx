@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import InitialsAvatar from './InitialsAvatar.jsx'
 import SeverityBadge from './SeverityBadge.jsx'
+import PatientDocuments from './PatientDocuments.jsx'
 import { getPatientDossier } from '../../lib/api.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 
@@ -113,6 +114,8 @@ export default function PatientDossierPanel({ patientId, onClose }) {
                 </ul>
               )}
             </section>
+
+            <PatientDocuments patientId={patientId} />
 
             <section>
               <h3 className="font-display text-sm font-medium text-ink dark:text-ink-dark">Appointment History</h3>
