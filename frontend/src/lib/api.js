@@ -25,10 +25,10 @@ async function request(path, options = {}) {
 }
 
 /** Registers a new patient or doctor with email + password. */
-export function signupWithEmail({ email, password, fullName, role }) {
+export function signupWithEmail({ email, password, fullName, role, specialization }) {
   return request('/auth/signup', {
     method: 'POST',
-    body: JSON.stringify({ email, password, full_name: fullName, role }),
+    body: JSON.stringify({ email, password, full_name: fullName, role, specialization }),
   })
 }
 

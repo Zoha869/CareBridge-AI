@@ -19,7 +19,7 @@ from app.models.doctor import Doctor
 from app.schemas.auth import EmailSignupRequest, EmailLoginRequest, GoogleLoginRequest
 
 
-def _create_local_profile(db: Session, supabase_user_id: str, email: str, full_name: str, role: str, provider: str) -> User:
+def _create_local_profile(db: Session, supabase_user_id: str, email: str, full_name: str, role: str, provider: str, specialization: str | None = None) -> User:
     """
     Creates the matching row in our own "users" table (and the
     role-specific "patients"/"doctors" row) after a successful
@@ -42,7 +42,7 @@ def _create_local_profile(db: Session, supabase_user_id: str, email: str, full_n
     if role == "patient":
         db.add(Patient(user_id=user.id))
     elif role == "doctor":
-        db.add(Doctor(user_id=user.id))
+        db.add(Doctor(user_id=user.id, specialization=specialization))
 
     db.commit()
     db.refresh(user)
@@ -77,6 +77,7 @@ def signup_with_email(db: Session, payload: EmailSignupRequest) -> dict:
         full_name=payload.full_name,
         role=payload.role,
         provider="email",
+        specialization=payload.specialization,
     )
 
     return {

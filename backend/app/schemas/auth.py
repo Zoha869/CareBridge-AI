@@ -6,6 +6,7 @@ for the /auth endpoints. Actual credential verification is delegated
 to Supabase — these schemas only describe the data shape.
 """
 
+from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -16,6 +17,7 @@ class EmailSignupRequest(BaseModel):
     password: str = Field(min_length=8)
     full_name: str
     role: str = Field(pattern="^(patient|doctor)$")
+    specialization: Optional[str] = None  # only meaningful when role="doctor"
 
 
 class EmailLoginRequest(BaseModel):
@@ -30,7 +32,7 @@ class GoogleLoginRequest(BaseModel):
     Payload for completing a Google sign-in.
 
     The frontend performs the actual Google OAuth redirect via
-    Supabase (`supabase.auth.signInWithOAuth`); once Supabase returns
+    Supabase (supabase.auth.signInWithOAuth); once Supabase returns
     an access token, the frontend sends it here so the backend can
     ensure a matching profile row exists in our own "users" table.
     """

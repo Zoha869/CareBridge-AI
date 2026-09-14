@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 export default function Signup() {
   const [role, setRole] = useState('patient')
   const [fullName, setFullName] = useState('')
+  const [specialization, setSpecialization] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -28,7 +29,7 @@ export default function Signup() {
     setIsSubmitting(true)
 
     try {
-      const result = await signupWithEmail({ email, password, fullName, role })
+      const result = await signupWithEmail({ email, password, fullName, role, specialization: role === 'doctor' ? specialization : undefined })
       login(result)
       navigate(role === 'doctor' ? '/welcome/doctor' : '/welcome/patient')
     } catch (err) {
@@ -92,6 +93,22 @@ export default function Signup() {
             placeholder="Jane Doe"
           />
         </div>
+
+        {role === 'doctor' && (
+          <div>
+            <label className="block text-sm font-medium text-ink dark:text-ink-dark">Specialization</label>
+            <input
+              type="text"
+              required
+              value={specialization}
+              onChange={(e) => setSpecialization(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-ink/15 bg-panel px-3 py-2.5
+                         text-base text-ink outline-none transition focus:border-accent sm:text-sm
+                         dark:border-ink-dark/15 dark:bg-panel-dark dark:text-ink-dark"
+              placeholder="e.g. Cardiology, General Medicine"
+            />
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-ink dark:text-ink-dark">Email</label>

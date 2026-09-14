@@ -136,15 +136,24 @@ def _find_patient_by_name(patients: list[dict], text: str | None) -> dict | None
 def _resolve_patient(db: Session, doctor_id, patients: list[dict], patient_id, patient_name_hint: str | None, message: str) -> dict | None:
     """Figures out which patient (if any) this message is about.
 
-    Priority: an explicit patient_id from the UI selection wins outright;
-    otherwise try to match a name mentioned in the hint or the doctor's
-    own message text against this doctor's patient list.
+    Priority: a patient named explicitly in THIS message always wins -
+    otherwise a stale patient_id carried over from an earlier turn (once
+    the frontend starts sending it back after a resolution) could silently
+    receive an action meant for a different, newly-named patient. That's
+    a safety concern (wrong patient gets a medicine/instruction), not just
+    a UX one. Falling short of that: an explicit patient_id (UI click, or
+    carried over so a pronoun-only follow-up like "give her Panadol" still
+    resolves), then a name in the hint.
     """
+    named_in_message = _find_patient_by_name(patients, message)
+    if named_in_message:
+        return named_in_message
+
     if patient_id:
         match = next((p for p in patients if str(p["patient_id"]) == str(patient_id)), None)
         return match or {"patient_id": patient_id, "full_name": patient_name_hint or "the patient"}
 
-    return _find_patient_by_name(patients, patient_name_hint) or _find_patient_by_name(patients, message)
+    return _find_patient_by_name(patients, patient_name_hint)
 
 
 def _result(

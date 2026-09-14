@@ -57,22 +57,47 @@ export default function PatientDashboard() {
 
   useEffect(() => {
     const token = session.access_token
-    Promise.all([
-      getMyPatientProfile(token),
-      getMyAppointments(token),
-      getMedications(token),
-      getInstructions(token),
-      getOpenConcerns(token),
-    ])
-      .then(([p, appts, meds, ins, cons]) => {
-        setProfile(p)
-        setAppointments(appts)
-        setMedications(meds)
-        setInstructions(ins)
-        setConcerns(cons)
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
+
+    // Loads/refreshes everything. Used for the initial mount fetch and
+    // for periodic background refreshes below - doctor-side updates
+    // (a new prescription/instruction/appointment change) otherwise
+    // never appear here until the patient manually reloads the page.
+    function loadData({ silent } = {}) {
+      if (!silent) setLoading(true)
+      return Promise.all([
+        getMyPatientProfile(token),
+        getMyAppointments(token),
+        getMedications(token),
+        getInstructions(token),
+        getOpenConcerns(token),
+      ])
+        .then(([p, appts, meds, ins, cons]) => {
+          setProfile(p)
+          setAppointments(appts)
+          setMedications(meds)
+          setInstructions(ins)
+          setConcerns(cons)
+          setError('')
+        })
+        .catch((err) => setError(err.message))
+        .finally(() => setLoading(false))
+    }
+
+    loadData()
+
+    // Background refresh every 20s, and immediately on returning to this
+    // tab - covers "doctor just saved something while I was looking at
+    // the chat" without needing a manual reload or a websocket.
+    const intervalId = setInterval(() => loadData({ silent: true }), 20000)
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') loadData({ silent: true })
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [session.access_token])
 
   const nextAppointment = useMemo(() => {
