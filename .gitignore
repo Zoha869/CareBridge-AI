@@ -30,6 +30,7 @@ pnpm-debug.log*
 !.env.example
 
 # Editors
+.vscode/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
