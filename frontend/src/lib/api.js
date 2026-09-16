@@ -5,6 +5,7 @@
 // an Error with the backend's detail message on failure, so callers
 // can show it directly to the user.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+const STORAGE_KEY = 'carebridge-session'
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -18,7 +19,9 @@ async function request(path, options = {}) {
   const data = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new Error(data.detail || 'Something went wrong. Please try again.')
+    const error = new Error(data.detail || 'Something went wrong. Please try again.')
+    error.status = response.status
+    throw error
   }
 
   return data
@@ -52,11 +55,65 @@ export function loginWithGoogle({ accessToken, role }) {
   })
 }
 
+/**
+ * Exchanges the stored refresh_token for a fresh access_token.
+ * Updates localStorage directly and fires an event so AuthContext
+ * (which only reads localStorage on mount) picks up the new token.
+ *
+ * If several requests hit 401 at the same time (e.g. the dashboard
+ * firing 5 parallel calls right when the token expires), they must
+ * NOT each call /auth/refresh separately — Supabase only accepts the
+ * refresh_token once per short window, so the others would come back
+ * 401 too. This shares a single in-flight refresh across all callers.
+ */
+let refreshPromise = null
+
+async function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise
+
+  refreshPromise = (async () => {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    const session = saved ? JSON.parse(saved) : null
+
+    if (!session?.refresh_token) {
+      throw new Error('Session expired. Please log in again.')
+    }
+
+    const data = await request('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+    })
+
+    const updatedSession = { ...session, ...data }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSession))
+    window.dispatchEvent(new CustomEvent('carebridge-session-updated', { detail: updatedSession }))
+
+    return updatedSession.access_token
+  })()
+
+  try {
+    return await refreshPromise
+  } finally {
+    refreshPromise = null
+  }
+}
+
 async function authedRequest(path, token, options = {}) {
-  return request(path, {
-    ...options,
-    headers: { Authorization: `Bearer ${token}`, ...options.headers },
-  })
+  try {
+    return await request(path, {
+      ...options,
+      headers: { Authorization: `Bearer ${token}`, ...options.headers },
+    })
+  } catch (err) {
+    if (err.status === 401) {
+      const freshToken = await refreshAccessToken()
+      return request(path, {
+        ...options,
+        headers: { Authorization: `Bearer ${freshToken}`, ...options.headers },
+      })
+    }
+    throw err
+  }
 }
 
 /** Sends a patient message to the AI assistant and returns its reply. */
@@ -146,6 +203,7 @@ export function bookAppointment(token, { doctorId, date, time, reason }) {
 export function getConversationHistory(token) {
   return authedRequest('/conversations/history', token)
 }
+
 /** Uploads a document (PDF) to the patient's own record - also feeds the RAG index. */
 export async function uploadDocument(token, { file, documentType }) {
   const formData = new FormData()

@@ -15,6 +15,8 @@ from app.schemas.auth import (
     EmailLoginRequest,
     GoogleLoginRequest,
     AuthResponse,
+    RefreshRequest,
+    RefreshResponse,
 )
 from app.services import auth_service
 
@@ -40,3 +42,9 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
     OAuth redirect flow, and syncs the profile into our own database.
     """
     return auth_service.login_with_google(db, payload)
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+def refresh(payload: RefreshRequest):
+    """Exchanges a refresh_token for a new access_token (used after a 401)."""
+    return auth_service.refresh_session(payload.refresh_token)

@@ -5,7 +5,7 @@
 // reloads. This is intentionally simple for Phase 1 — later phases
 // can add token refresh logic once the chat/appointment features
 // need longer-lived sessions.
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 const AuthContext = createContext(null)
 
@@ -16,6 +16,15 @@ export function AuthProvider({ children }) {
     const saved = localStorage.getItem(STORAGE_KEY)
     return saved ? JSON.parse(saved) : null
   })
+
+  // api.js refreshes the access_token directly in localStorage when a
+  // request comes back 401 (it can't call setSession from outside React).
+  // This keeps in-memory state in sync with that silent refresh.
+  useEffect(() => {
+    const handleSessionUpdated = (event) => setSession(event.detail)
+    window.addEventListener('carebridge-session-updated', handleSessionUpdated)
+    return () => window.removeEventListener('carebridge-session-updated', handleSessionUpdated)
+  }, [])
 
   const login = (sessionData) => {
     setSession(sessionData)

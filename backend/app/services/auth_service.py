@@ -82,6 +82,7 @@ def signup_with_email(db: Session, payload: EmailSignupRequest) -> dict:
 
     return {
         "access_token": result.session.access_token,
+        "refresh_token": result.session.refresh_token,
         "user_id": result.user.id,
         "email": payload.email,
         "full_name": payload.full_name,
@@ -112,10 +113,39 @@ def login_with_email(db: Session, payload: EmailLoginRequest) -> dict:
 
     return {
         "access_token": result.session.access_token,
+        "refresh_token": result.session.refresh_token,
         "user_id": str(user_row.id),
         "email": user_row.email,
         "full_name": user_row.full_name,
         "role": user_row.role.value,
+    }
+
+
+def refresh_session(refresh_token: str) -> dict:
+    """
+    Exchanges a refresh_token for a new access_token + refresh_token pair.
+    Called by the frontend when an API request comes back 401 because
+    the access_token has expired.
+    """
+    supabase = get_anon_client()
+
+    try:
+        result = supabase.auth.refresh_session(refresh_token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
+        )
+
+    if result.session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
+        )
+
+    return {
+        "access_token": result.session.access_token,
+        "refresh_token": result.session.refresh_token,
     }
 
 

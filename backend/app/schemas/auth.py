@@ -45,8 +45,23 @@ class AuthResponse(BaseModel):
     """Standard response returned after successful signup or login."""
 
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user_id: str
     email: EmailStr
     full_name: str
     role: str
+
+
+class RefreshRequest(BaseModel):
+    """Payload for exchanging a refresh_token for a new access_token."""
+
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    """Response after successfully refreshing a session."""
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
