@@ -11,6 +11,15 @@ import RoleCard from '../components/RoleCard.jsx'
 import GoogleButton from '../components/GoogleButton.jsx'
 import PasswordInput from '../components/PasswordInput.jsx'
 import IconInput, { MailIcon, PersonIcon } from '../components/IconInput.jsx'
+
+const SpecializationIcon = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M9 3v4a3 3 0 0 0 6 0V3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 3v6a3 3 0 0 0 6 0V3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M12 12v3a5 5 0 0 0 5 5 5 5 0 0 0 5-5v-1" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="20" cy="9" r="2" />
+  </svg>
+)
 import ThemeToggle from '../components/ThemeToggle.jsx'
 import { loginWithEmail, signupWithEmail } from '../lib/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -34,6 +43,7 @@ export default function Auth({ initialTab = 'login' }) {
   const [role, setRole] = useState('patient')
   const [tab, setTab] = useState(initialTab)
   const [fullName, setFullName] = useState('')
+  const [specialization, setSpecialization] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -50,7 +60,13 @@ export default function Auth({ initialTab = 'login' }) {
     try {
       const result =
         tab === 'signup'
-          ? await signupWithEmail({ email, password, fullName, role })
+          ? await signupWithEmail({
+              email,
+              password,
+              fullName,
+              role,
+              specialization: role === 'doctor' ? specialization : undefined,
+            })
           : await loginWithEmail({ email, password })
 
       login(result)
@@ -131,6 +147,15 @@ export default function Auth({ initialTab = 'login' }) {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Full name"
+                />
+              )}
+
+              {tab === 'signup' && role === 'doctor' && (
+                <IconInput
+                  icon={SpecializationIcon}
+                  value={specialization}
+                  onChange={(e) => setSpecialization(e.target.value)}
+                  placeholder="Specialization (e.g. Cardiology)"
                 />
               )}
 
